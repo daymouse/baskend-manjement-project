@@ -25,14 +25,16 @@ import Comment from "./routes/commentRoutes.js";
 
 dotenv.config();
 
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer(app);
 // Setup Socket.IO di atas HTTP server
-export const io = new Server(server,{
+export const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // alamat React
+    origin: CLIENT_URL,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -45,7 +47,7 @@ const __dirname = path.dirname(__filename);
 
 app.use(
   cors({
-    origin: "http://localhost:5173", 
+    origin: CLIENT_URL,
     credentials: true,
   })
 );
@@ -88,13 +90,6 @@ app.use("/detail-projects", DetailProject);
 app.use("/home-user", dashboardUserRoute);
 app.use("/comment", Comment);
 
-
-// Serve React build
-app.use(express.static(path.join(__dirname, "../frontend_new/dist"))); 
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend_new/dist", "index.html"));
-});
 
 server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
