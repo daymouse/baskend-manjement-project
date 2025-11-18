@@ -10,6 +10,7 @@ import {
   updateCard,
   updateCardAssignment,
   getAssignableMembers,
+  deleteCard,
 } from "../controllers/cardController.js";
 import { authenticateToken } from "../authToken/AuthToken.js";
 
@@ -25,6 +26,7 @@ router.post("/:card_id/revise", authenticateToken, reviseCard);
 router.get("/board/:board_id/members", authenticateToken, getBoardMembers);
 router.patch("/:card_id", authenticateToken, updateCard);
 router.patch("/:card_id/assign", authenticateToken, updateCardAssignment);
+router.delete("/card/:card_id", authenticateToken, deleteCard);
 router.get("/project/:project_id/members", authenticateToken, getAssignableMembers);
 
 export default router;

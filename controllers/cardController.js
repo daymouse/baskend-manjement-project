@@ -598,3 +598,55 @@ export const updateCardAssignment = async (req, res) => {
     return res.status(500).json({ error: "Gagal update assignment card" });
   }
 };
+
+export const deleteCard = async (req, res) => {
+  const { card_id } = req.params;
+  const io = req.app.get("io"); // ambil io dari app instance
+
+  try {
+    // Pastikan card exist dan ambil board_id
+    const { data: card, error: cardError } = await supabase
+      .from("cards")
+      .select("card_id, board_id, card_title")
+      .eq("card_id", card_id)
+      .single();
+
+    if (cardError || !card) {
+      return res.status(404).json({ error: "Card tidak ditemukan" });
+    }
+
+    const boardId = card.board_id;
+
+    // 🔥 Hapus dependencies untuk hindari FK error
+    await supabase.from("subtask_blockers").delete().eq("subtask_id", card_id);
+    await supabase.from("task_contributors").delete().eq("card_id", card_id);
+    await supabase.from("time_logs").delete().eq("card_id", card_id);
+    await supabase.from("card_assignments").delete().eq("card_id", card_id);
+    await supabase.from("card_blockers").delete().eq("card_id", card_id);
+    await supabase.from("comments").delete().eq("card_id", card_id);
+    await supabase.from("subtasks").delete().eq("card_id", card_id);
+
+    // ✨ Hapus card utama
+    const { error } = await supabase
+      .from("cards")
+      .delete()
+      .eq("card_id", card_id);
+
+    if (error) throw error;
+
+    // 🔔 Broadcast melalui socket ke semua user board ini
+    io.to(`board_${boardId}`).emit("card_deleted", {
+      board_id: boardId,
+      card_id: card_id,
+      type: "delete_card",
+      message: `Card "${card.card_title}" telah dihapus`,
+    });
+
+    return res.json({ message: "🗑️ Card berhasil dihapus" });
+
+  } catch (err) {
+    console.error("❌ deleteCard:", err);
+    return res.status(500).json({ error: "Gagal menghapus card" });
+  }
+};
+
