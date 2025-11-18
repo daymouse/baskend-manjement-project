@@ -122,6 +122,7 @@ export const updateComment = async (req, res) => {
  * DELETE Comment
  */
 export const deleteComment = async (req, res) => {
+  console.log("🚀 deleteComment called");
   try {
     const { comment_id } = req.params;
 
@@ -142,31 +143,61 @@ export const deleteComment = async (req, res) => {
     res.status(500).json({ error: "Gagal menghapus komentar" });
   }
 };
-export const createRejectComment = (io) => async (req, res) => {
+export const createRejectComment =  async (req, res) => {
+  console.log("🚀 createRejectComment called");
   try {
     const { card_id, user_id, subtask_id, reason } = req.body;
 
-    const { data, error } = await supabase
+    console.log("📥 Received Payload:", req.body);
+
+    const response = await supabase
       .from("comments")
-      .insert([{
-        card_id,
-        subtask_id,
-        user_id,
-        comment_text: `❌ Subtask #${subtask_id} ditolak: ${reason}`,
-        comment_type: "feedback",
-        comment_category: "reject",
-      }])
-      .select("*, users(username)");
+      .insert([
+        {
+          card_id : card_id,
+          subtask_id: subtask_id,
+          user_id: user_id,
+          comment_text: reason,
+          comment_type: "feedback",
+          comment_category: "reject",
+        }
+      ])
+      .select("*, users(username)"); // ubah sementara untuk hindari join error
+
+    // Debug insert result
+    console.log("📤 Supabase insert response:", response);
+
+    const { data, error } = response;
+
+    if (error) {
+      console.error("❌ Supabase Insert Error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Jika data kosong
+    if (!data || data.length === 0) {
+      console.warn("⚠ Insert returned no rows");
+      return res.status(400).json({ error: "Insert failed - no data returned" });
+    }
 
     const rejectComment = data[0];
 
-    // Emit hanya ke room card
+    console.log("✅ Saved comment:", rejectComment);
+
+    // Emit socket
     io.to(`card_${card_id}`).emit("comment:reject", rejectComment);
 
-    // Opsional: notif ke assignee
-    const { data: subtask } = await supabase.from('subtasks').select('assigned_to').eq('subtask_id', subtask_id).single();
-    if (subtask?.assigned_to) {
-      io.to(`user_${subtask.assigned_to}`).emit("subtask_rejected", {
+    // Optional: notif ke assignee
+    const resultSubtask = await supabase
+      .from("subtasks")
+      .select("assigned_to")
+      .eq("subtask_id", subtask_id)
+      .single();
+
+    console.log("📌 Assignee lookup result:", resultSubtask);
+
+    if (resultSubtask.data?.assigned_to) {
+      io.to(`user_${resultSubtask.data.assigned_to}`).emit("subtask_rejected", {
         subtask_id,
         reason,
         comment: rejectComment,
@@ -174,8 +205,9 @@ export const createRejectComment = (io) => async (req, res) => {
     }
 
     res.json(rejectComment);
+
   } catch (err) {
-    console.error(err);
+    console.error("🔥 Internal server error:", err);
     res.status(500).json({ error: "Gagal menambahkan komentar reject" });
   }
 };

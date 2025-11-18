@@ -134,7 +134,7 @@ export const createTimeLog = async (req, res) => {
       .single();
 
     if (cardData?.board_id) {
-      io.to(`board_${cardData.board_id}`).emit("card_status_inProgres", {
+      io.to(`board_${cardData.board_id}`).emit("card_status_inProgress", {
         board_id: cardData.board_id,
         card_id,
         new_status: "in_progress",
@@ -162,21 +162,20 @@ export const endTimeLog = async (req, res) => {
 
   try {
     const userId = req.user?.user_id;
-    if (!userId)
-      return res.status(400).json({ error: "User ID tidak ditemukan" });
+    if (!userId) return res.status(400).json({ error: "User ID tidak ditemukan" });
 
     const end_time = getJakartaTimestamp();
 
-    // 🔸 1. Validasi subtask ownership
+    // 🔸 1. Ambil subtask + card.board_id (join ke cards)
     const { data: subtask, error: subtaskErr } = await supabase
       .from("subtasks")
-      .select("assigned_to, card_id")
+      // ambil assigned_to, card_id dan join ke cards untuk dapatkan board_id
+      .select("assigned_to, card_id, cards(board_id)")
       .eq("subtask_id", subtask_id)
       .single();
 
     if (subtaskErr) throw subtaskErr;
-    if (!subtask)
-      return res.status(404).json({ error: "Subtask tidak ditemukan" });
+    if (!subtask) return res.status(404).json({ error: "Subtask tidak ditemukan" });
 
     if (subtask.assigned_to !== userId) {
       return res.status(403).json({
@@ -196,13 +195,12 @@ export const endTimeLog = async (req, res) => {
       .single();
 
     if (logErr) throw logErr;
-    if (!activeLog)
-      return res.status(404).json({ error: "Log aktif tidak ditemukan" });
+    if (!activeLog) return res.status(404).json({ error: "Log aktif tidak ditemukan" });
 
     // 🔸 3. Hitung durasi
     const startTime = new Date(activeLog.start_time);
     const endTime = new Date(end_time);
-    const durationSeconds = Math.floor((endTime - startTime) / 1000);
+    const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
     const isoDuration = `${durationSeconds} seconds`;
 
     // 🔸 4. Tutup log
@@ -231,23 +229,44 @@ export const endTimeLog = async (req, res) => {
 
     if (subtaskUpdateErr) throw subtaskUpdateErr;
 
-    // ✅ Perbaikan update card
+    // ✅ 6. Update card → status = 'review' (pakai card_id dari subtask)
     const { error: cardUpdateErr } = await supabase
       .from("cards")
       .update({ status: "review" })
-      .eq("card_id", subtask.card_id); // ← gunakan card_id dari subtask
+      .eq("card_id", subtask.card_id);
 
     if (cardUpdateErr) throw cardUpdateErr;
 
-
-    // 🔸 6. Hitung total jam aktual dari semua log
-    const { data: totalHours, error: totalErr } = await supabase.rpc(
+    // 🔸 7. Hitung total jam aktual dari semua log (RPC)
+    const { data: totalHoursData, error: totalErr } = await supabase.rpc(
       "calculate_total_hours",
       { subtask_id }
     );
     if (totalErr) throw totalErr;
 
-    // 🔸 7. Simpan actual_hours ke subtasks
+    // RPC bisa mengembalikan bentuk yang berbeda (number, array, object)
+    let totalHours = 0;
+    if (totalHoursData == null) {
+      totalHours = 0;
+    } else if (typeof totalHoursData === "number") {
+      totalHours = totalHoursData;
+    } else if (Array.isArray(totalHoursData) && totalHoursData.length > 0) {
+      // mis. [{ calculate_total_hours: 3.5 }] atau [3.5]
+      const first = totalHoursData[0];
+      if (typeof first === "number") totalHours = first;
+      else if (typeof first === "object") {
+        // ambil value pertama yang ada dalam object
+        const vals = Object.values(first);
+        totalHours = vals.length ? vals[0] : 0;
+      } else totalHours = 0;
+    } else if (typeof totalHoursData === "object") {
+      const vals = Object.values(totalHoursData);
+      totalHours = vals.length ? vals[0] : 0;
+    } else {
+      totalHours = Number(totalHoursData) || 0;
+    }
+
+    // 🔸 8. Simpan actual_hours ke subtasks
     const { error: updateActualErr } = await supabase
       .from("subtasks")
       .update({ actual_hours: totalHours })
@@ -264,20 +283,43 @@ export const endTimeLog = async (req, res) => {
       ended_at: end_time,
     });
 
-    // 🔸 8. Beri respons sukses
+    const boardId = subtask.cards?.board_id;
+
+    if (boardId) {
+      // broadcast subtask end event
+      io.to(`board_${boardId}`).emit("card_status_changed", {
+        type: "move_to_review",
+        card_id: subtask.card_id,
+        board_id: boardId,
+        user_id: userId,
+        new_status: "review",
+      });
+
+      // broadcast card move to review column
+      io.to(`board_${boardId}`).emit("card_review_status", {
+        board_id: boardId,
+        card_id: subtask.card_id,
+        new_status: "review",
+        type: "move_to_review",
+        message: `Card telah dipindahkan ke Review`,
+      });
+    }
+
+
+    // 🔸 10. Respons sukses
     return res.status(200).json({
       message: "✅ Subtask selesai & masuk tahap review",
       data: {
         ...updatedLog,
         actual_hours: totalHours,
-        duration_human: `${Math.floor(durationSeconds / 60)}m ${
-          durationSeconds % 60
-        }s`,
+        duration_human: `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`,
       },
     });
   } catch (err) {
     console.error("❌ endTimeLog error:", err);
-    return res.status(500).json({ error: err.message });
+    // jika err bukan Error object biasa, pastikan ada message
+    const message = err?.message || String(err);
+    return res.status(500).json({ error: message });
   }
 };
 

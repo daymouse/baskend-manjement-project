@@ -369,12 +369,10 @@ export const reviewSubtask = async (req, res) => {
       reviewed_at: new Date().toISOString(),
     });
 
-    io.to(`board_${board_id}`).emit("card_status_changed", {
-      type: "card_status_update",
+    io.to(`board_${board_id}`).emit("card_doneOrInProgres", {
       card_id,
       board_id,
       new_status: newCardStatus,
-      updated_at: new Date().toISOString(),
     });
 
     return res.json({
@@ -388,6 +386,48 @@ export const reviewSubtask = async (req, res) => {
   } catch (err) {
     console.error("❌ reviewSubtask error:", err);
     return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const updateSubtask = async (req, res) => {
+  const { subtask_id } = req.params;
+  const updates = req.body; // inline edit - body bisa berisi 1 atau banyak field
+
+  try {
+    const { data, error } = await supabase
+      .from("subtasks")
+      .update(updates)
+      .eq("subtask_id", subtask_id)
+      .select();
+
+    if (error) throw error;
+    res.status(200).json({
+      message: "Subtask berhasil diperbarui",
+      data,
+    });
+  } catch (err) {
+    console.error("Error update subtask:", err.message);
+    console.log(err.message);
+    res.status(500).json({ message: "Gagal update", error: err.message });
+  }
+};
+
+
+export const deleteSubtask = async (req, res) => {
+  const { subtask_id } = req.params;
+
+  try {
+    const { error } = await supabase
+      .from("subtasks")
+      .delete()
+      .eq("subtask_id", subtask_id);
+
+    if (error) throw error;
+
+    res.status(200).json({ message: "Subtask berhasil dihapus" });
+  } catch (err) {
+    console.error("Error delete subtask:", err.message);
+    res.status(500).json({ message: "Gagal menghapus", error: err.message });
   }
 };
 

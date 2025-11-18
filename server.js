@@ -22,6 +22,8 @@ import dashboardAdminRoutes from "./routes/dashboardAdminRoutes.js";
 import DetailProject from "./routes/projectDetailRoutes.js";
 import dashboardUserRoute from "./routes/dashboardUserRoute.js";
 import Comment from "./routes/commentRoutes.js";
+import Chat from "./routes/chatRoutes.js";
+import ProjectReview from "./routes/projectReviewRoutes.js";
 
 dotenv.config();
 
@@ -89,6 +91,8 @@ app.use("/home-admin", dashboardAdminRoutes);
 app.use("/detail-projects", DetailProject);
 app.use("/home-user", dashboardUserRoute);
 app.use("/comment", Comment);
+app.use("/chat", Chat);
+app.use("/project-review", ProjectReview);
 
 
 server.listen(PORT, () => {

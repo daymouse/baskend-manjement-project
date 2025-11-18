@@ -14,6 +14,7 @@ export const getCardsByBoard = async (req, res) => {
         description,
         status,
         priority,
+        created_at,
         due_date,
         card_assignments (assignment_id),
         card_blockers:card_blockers!card_blockers_card_id_fkey (

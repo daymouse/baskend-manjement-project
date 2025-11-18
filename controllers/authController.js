@@ -11,18 +11,12 @@ export const registerUser = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
 
   // 🧩 Ambil data dari body
-  const { username, password, confirm_password, full_name, email } = req.body;
+  const { username, password, full_name, email } = req.body;
   const is_admin = false;
   const role = "";
   const current_task_status = "available";
 
   try {
-    // ✅ Cek kecocokan password dan konfirmasi
-    if (password !== confirm_password) {
-      return res
-        .status(400)
-        .json({ error: "Password dan konfirmasi password tidak cocok." });
-    }
 
     // 🔐 Enkripsi password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -57,7 +51,7 @@ export const loginUser = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { email, password } = req.body;
+  const { email, password, remember } = req.body;
 
   try {
     // 🔹 Ambil user dari database
@@ -94,7 +88,9 @@ export const loginUser = async (req, res) => {
       httpOnly: true,
       secure: false,
       sameSite: "lax",
-      maxAge: 60 * 60 * 1000,
+      maxAge: remember
+      ? 30 * 24 * 60 * 60 * 1000   // ✔️ Remember Me: 30 hari
+      : 12 * 60 * 60 * 1000,       // ⏱ Tidak Remember Me: 12 jam
     });
 
     // 🔹 Hapus password dari respon
@@ -136,7 +132,10 @@ export const getAuthMe = async (req, res) => {
     // 🔹 Ambil data user dari database
     const { data: user, error } = await supabase
       .from("users")
-      .select("user_id, full_name, email")
+      .select(`
+        *,
+        role:roles_user(role_name)
+      `)
       .eq("user_id", decoded.user_id)
       .single();
 
@@ -199,4 +198,48 @@ export const updateUseradmin = async (req, res) => {
     res.status(500).json({ error: "Terjadi kesalahan pada server." });
   }
 };
+
+export const checkPassword = async (req, res) => {
+  try {
+    const { old_password } = req.body;
+
+    // Ambil data user dari DB
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", req.user.user_id)
+      .single();
+
+    if (error || !user) return res.status(404).json({ success: false, message: "User tidak ditemukan" });
+
+    // Bandingkan password
+    const isMatch = await bcrypt.compare(old_password, user.password);
+    if (!isMatch) return res.json({ success: false });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Error check password:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    const { new_password } = req.body;
+    const hash = await bcrypt.hash(new_password, 10);
+
+    const { error } = await supabase
+      .from("users")
+      .update({ password: hash })
+      .eq("user_id", req.user.user_id);
+
+    if (error) throw error;
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Error change password:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 

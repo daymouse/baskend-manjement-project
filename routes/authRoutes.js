@@ -5,7 +5,9 @@ import {
   loginUser,
   checkAuth,
   getAuthMe,
-  updateUseradmin
+  updateUseradmin,
+  checkPassword,
+  changePassword,
 } from "../controllers/authController.js";
 import { authenticateToken } from "../authToken/AuthToken.js";
 
@@ -15,27 +17,10 @@ const router = express.Router();
 router.post(
   "/register",
   [
-    body("username")
-      .notEmpty().withMessage("Username wajib diisi")
-      .trim()
-      .isLength({ min: 3, max: 20 }).withMessage("Username 3-20 karakter")
-      .matches(/^[a-zA-Z0-9_]+$/).withMessage("Username hanya boleh huruf/angka/_"),
-
-    body("password")
-      .notEmpty().withMessage("password wajib diisi")
-      .isLength({ min: 8 }).withMessage("Password minimal 8 karakter")
-      .matches(/[0-9]/).withMessage("Password harus mengandung angka")
-      .matches(/[A-Z]/).withMessage("Password harus ada huruf besar"),
-
-    body("full_name")
-      .notEmpty().withMessage("full name wajib diisi")
-      .trim()
-      .isLength({ min: 3 }).withMessage("Nama lengkap minimal 3 karakter"),
-
-    body("email")
-      .notEmpty().withMessage("email wajib diisi")
-      .isEmail().withMessage("Format email salah")
-      .normalizeEmail(),
+    body("username").notEmpty().withMessage("Username wajib diisi"),
+    body("password").notEmpty().withMessage("Password wajib diisi"),
+    body("full_name").notEmpty().withMessage("Full name wajib diisi"),
+    body("email").isEmail().withMessage("Email tidak valid"),
   ],
   registerUser
 );
@@ -55,6 +40,8 @@ router.get("/check-auth", authenticateToken, checkAuth);
 
 // =================== GET AUTH ME ===================
 router.get("/auth/me", getAuthMe);
-router.patch("/update-user", updateUseradmin);
+router.patch("/update-user", authenticateToken, updateUseradmin);
+router.post("/check-password", authenticateToken, checkPassword);
+router.put("/change-password", authenticateToken, changePassword);
 
 export default router;

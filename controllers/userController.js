@@ -6,7 +6,8 @@ export const getAllUsers = async (req, res) => {
     const { data: UserData, error } = await supabase
       .from("users")
       .select("*")
-      .neq("is_admin", true);
+      .neq("is_admin", true)
+      .order("created_at", { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
 
@@ -18,6 +19,7 @@ export const getAllUsers = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // ✅ UPDATE ROLE
 export const updateUserRole = async (req, res) => {
